@@ -1,9 +1,8 @@
 -- =============================================================================
--- Interpretator for the lox launguage, the program will use the lexer and parser
--- to get the parse tree and then evaluate the parse tree. During evaluation the
--- program will keep track of the environment and output. The environment is a
--- map of variable names to values. The output is a list of strings that will be
--- printed at the end of the program.
+-- Interpretator for the lox launguage, this module will evaluate the parse tree
+-- that was created by the parser. The interpretator will keep track of the environment
+-- and the output. The environment is a list of maps where each map represents a scope.
+-- The output is a list of strings that will be printed at the end of the program.
 -- =============================================================================
 module Interpretator (
     interpreter,
@@ -18,12 +17,10 @@ import Scanner (scanTokens)
 import Tokens
 import ParseTypes
 import Debug.Trace (trace)
-
 import qualified Data.Map as Map
 
-
+-- ===================== Data types =====================
 type Env = [Map.Map String Value]
--- == Data types ==
 data Value
     = Nil
     | BoolVal Bool
@@ -37,12 +34,14 @@ data State = State {
     }
 instance Show State where
     -- print output on new line for each element
-    show (State env out) = "Environment: " ++ show env ++ "\nOutput: {\n\n" ++ unlines out ++ "\n}"
+    show (State enc out) = unlines out
+    --show (State env out) = "Environment: " ++ show env ++ "\nOutput: {\n\n" ++ unlines out ++ "\n}"
 
--- == Helper functions ==
-toFloat :: Value -> Double
-toFloat (Number n) = n
-toFloat _ = error "Expected number"
+-- ===================== Helper functions =====================
+-- Convert value to double
+toDouble :: Value -> Double
+toDouble (Number n) = n
+toDouble _ = error "Expected number"
 
 -- Lox thruthiness
 toBool :: Value -> Bool
@@ -51,25 +50,28 @@ toBool (Number n) = True
 toBool Nil = False
 toBool _ = True
 
+-- Convert value to string
 showValue :: Value -> String
 showValue (BoolVal b) = if b then "true" else "false"
 showValue (Number n) = show n
 showValue (StringVal s) = s
 showValue Nil = "nil"
 
-lookupValue:: String -> Env -> Maybe Value
-lookupValue name [] = Nothing
-lookupValue name (env:envs) = 
+-- Look up the value of a variable in the environment
+lookupVar:: String -> Env -> Maybe Value
+lookupVar name [] = Nothing
+lookupVar name (env:envs) = 
     case Map.lookup name env of
         Just value -> Just value
-        Nothing -> lookupValue name envs
+        Nothing -> lookupVar name envs
+
 -- Update the value of a variable in the environment
-updateValue :: String -> Value -> Env -> Env
-updateValue name value [] = [Map.singleton name value]
-updateValue name value (scope:rest) =
+updateVar :: String -> Value -> Env -> Env
+updateVar name value [] = [Map.singleton name value]
+updateVar name value (scope:rest) =
     if Map.member name scope
         then Map.insert name value scope : rest
-        else scope : updateValue name value rest
+        else scope : updateVar name value rest
 
 -- ===================== Interpreter =====================
 interpreter :: ParseTree -> State
@@ -79,6 +81,7 @@ interpreter (ParseTree decls) = evalDeclarations decls (State {environment = [Ma
 -- ===================== Declaration =====================
 evalDeclarations :: [Declaration] -> State -> State
 evalDeclarations [] state = state
+-- Evaluate each declaration in the list
 evalDeclarations (d:ds) state =
     let newState = evalDeclaration d state
     in evalDeclarations ds newState
@@ -170,14 +173,14 @@ evalExpr (Assign var expr) state =
             _ -> error "Invalid variable name"
         (value, state1) = evalExpr expr state
         currentEnv = environment state1
-    in case lookupValue name currentEnv of
-        Just _ -> (value, state1 {environment = updateValue name value currentEnv})
+    in case lookupVar name currentEnv of
+        Just _ -> (value, state1 {environment = updateVar name value currentEnv})
         Nothing -> error ("Variable " ++ name ++ " not declared")
 evalExpr (Variable var) state = 
     let name = case var of
             TOKEN IDENTIFIER n _ _ -> n
             _ -> error "Invalid variable name"
-    in case lookupValue name (environment state) of 
+    in case lookupVar name (environment state) of 
            Just value -> (value, state)
            Nothing -> error ("Variable " ++ name ++ " not declared")
 evalExpr (Literal l) state = 
@@ -208,20 +211,20 @@ evalExpr (Binary l op r) state =
                     (Number a, Number b) -> (Number (a + b), state2)
                     (StringVal a, StringVal b) -> (StringVal (a ++ b), state2)
                     _ -> error ("Types not compatible with \"+\" operator on line: " ++ show n)
-                TOKEN MINUS _ _ _ -> (Number (toFloat left - toFloat right), state2)
-                TOKEN STAR _ _ _ -> (Number (toFloat left * toFloat right), state2)
-                TOKEN SLASH _ _ _ -> (Number (toFloat left / toFloat right), state2)
-                TOKEN GREATER _ _ _ -> (BoolVal (toFloat left > toFloat right), state2)
-                TOKEN GREATER_EQUAL _ _ _ -> (BoolVal (toFloat left >= toFloat right), state2)
-                TOKEN LESS _ _ _ -> (BoolVal (toFloat left < toFloat right), state2)
-                TOKEN LESS_EQUAL _ _ _ -> (BoolVal (toFloat left <= toFloat right), state2)
+                TOKEN MINUS _ _ _ -> (Number (toDouble left - toDouble right), state2)
+                TOKEN STAR _ _ _ -> (Number (toDouble left * toDouble right), state2)
+                TOKEN SLASH _ _ _ -> (Number (toDouble left / toDouble right), state2)
+                TOKEN GREATER _ _ _ -> (BoolVal (toDouble left > toDouble right), state2)
+                TOKEN GREATER_EQUAL _ _ _ -> (BoolVal (toDouble left >= toDouble right), state2)
+                TOKEN LESS _ _ _ -> (BoolVal (toDouble left < toDouble right), state2)
+                TOKEN LESS_EQUAL _ _ _ -> (BoolVal (toDouble left <= toDouble right), state2)
                 TOKEN EQUAL_EQUAL _ _ _ -> (BoolVal (left == right), state2)
                 TOKEN BANG_EQUAL _ _ _ -> (BoolVal (left /= right), state2)
                 TOKEN _ d _ n -> error ("Unsupported operator on line: " ++ show n ++ show d)
 evalExpr (Unary op expr) state = 
     let (value, state1) = evalExpr expr state
     in case op of
-        TOKEN MINUS _ _ _ -> (Number (- toFloat value), state1)
+        TOKEN MINUS _ _ _ -> (Number (- toDouble value), state1)
         TOKEN BANG _ _ _ -> (BoolVal (not (toBool value)), state1)
         _ -> error "Invalid unary operator"
 evalExpr (Grouping expr) state = evalExpr expr state

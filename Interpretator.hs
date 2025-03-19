@@ -16,7 +16,7 @@ import Debug.Trace (trace)
 import qualified Data.Map as Map
 
 
-type Env = Map.Map String Value
+type Env = [Map.Map String Value]
 -- == Data types ==
 data Value
     = Nil
@@ -51,6 +51,19 @@ showValue (Number n) = show n
 showValue (StringVal s) = s
 showValue Nil = "nil"
 
+lookupValue:: String -> Env -> Maybe Value
+lookupValue name [] = Nothing
+lookupValue name (env:envs) = 
+    case Map.lookup name env of
+        Just value -> Just value
+        Nothing -> lookupValue name envs
+-- Update the value of a variable in the environment
+updateValue :: String -> Value -> Env -> Env
+updateValue name value [] = [Map.singleton name value]
+updateValue name value (scope:rest) =
+    if Map.member name scope
+        then Map.insert name value scope : rest
+        else scope : updateValue name value rest
 -- ===================== Main =====================
 main :: IO ()
 main = do
@@ -64,7 +77,7 @@ main = do
             let program = parse tokens
             --Print the parsetree
             print program
-            let state = State {environment = Map.empty, output = []}
+            let state = State {environment = [Map.empty], output = []}
             let result = interpreter program state
             -- print the result
             print result
@@ -82,19 +95,24 @@ evalDeclarations (d:ds) state =
 
 -- Evaluate a single declaration
 evalDeclaration :: Declaration -> State -> State
-evalDeclaration (Statement stmt) state = trace "hej " $ evalStmt stmt state
+evalDeclaration (Statement stmt) state = evalStmt stmt state
 evalDeclaration (VarDecl token (Just expr)) state =
     let name = case token of
             TOKEN IDENTIFIER n _ _ -> n
             _ -> error "Invalid variable name"
         (value, state1) = evalExpr expr state
-        newEnv = Map.insert name value (environment state1)
+        newEnv = case environment state1 of
+            (currentScope:rest) -> Map.insert name value currentScope : rest
+            [] -> [Map.singleton name value]
     in state1 {environment = newEnv}
 evalDeclaration (VarDecl token Nothing) state = 
     let name = case token of
             TOKEN IDENTIFIER n _ _ -> n
             _ -> error "Invalid variable name"
-    in state {environment = Map.insert name Nil (environment state)}
+        newEnv = case environment state of
+            (currentScope:rest) -> Map.insert name Nil currentScope : rest
+            [] -> [Map.singleton name Nil]
+    in state {environment = newEnv}
 evalDeclaration _ _ = error "Unimplemented declaration type"
 
 
@@ -118,7 +136,11 @@ evalStmt (If expr stmt (Just elseStmt)) state =
         then evalStmt stmt state1
         else evalStmt elseStmt state1
 
-evalStmt (Block decls) state = evalDeclarations decls state
+evalStmt (Block decls) state = -- Create new scope for block
+    let stateWithNewScope = state {environment = Map.empty : environment state}
+        stateAfterBlock = evalDeclarations decls stateWithNewScope
+    -- Return to parent scope after block
+    in stateAfterBlock {environment = tail $ environment stateAfterBlock}
 
 evalStmt (While expr stmt) state = 
     let (value, state1) = evalExpr expr state
@@ -157,15 +179,15 @@ evalExpr (Assign var expr) state =
             TOKEN IDENTIFIER n _ _ -> n
             _ -> error "Invalid variable name"
         (value, state1) = evalExpr expr state
-        newEnv = Map.insert name value (environment state1)
-    in if Map.member name (environment state)
-       then (value, state1 {environment = newEnv})
-       else error ("Variable " ++ name ++ " not declared")
+        currentEnv = environment state1
+    in case lookupValue name currentEnv of
+        Just _ -> (value, state1 {environment = updateValue name value currentEnv})
+        Nothing -> error ("Variable " ++ name ++ " not declared")
 evalExpr (Variable var) state = 
     let name = case var of
             TOKEN IDENTIFIER n _ _ -> n
             _ -> error "Invalid variable name"
-    in case Map.lookup name (environment state) of 
+    in case lookupValue name (environment state) of 
            Just value -> (value, state)
            Nothing -> error ("Variable " ++ name ++ " not declared")
 evalExpr (Literal l) state = 
@@ -192,10 +214,10 @@ evalExpr (Binary l op r) state =
         _ -> 
             let (right, state2) = evalExpr r state1
             in case op of
-                TOKEN PLUS _ _ _ -> case (left, right) of 
+                TOKEN PLUS _ _ n -> case (left, right) of 
                     (Number a, Number b) -> (Number (a + b), state2)
                     (StringVal a, StringVal b) -> (StringVal (a ++ b), state2)
-                    _ -> error "Invalid operands for +"
+                    _ -> error ("Types not compatible with \"+\" operator on line: " ++ show n)
                 TOKEN MINUS _ _ _ -> (Number (toFloat left - toFloat right), state2)
                 TOKEN STAR _ _ _ -> (Number (toFloat left * toFloat right), state2)
                 TOKEN SLASH _ _ _ -> (Number (toFloat left / toFloat right), state2)
@@ -203,6 +225,8 @@ evalExpr (Binary l op r) state =
                 TOKEN GREATER_EQUAL _ _ _ -> (BoolVal (toFloat left >= toFloat right), state2)
                 TOKEN LESS _ _ _ -> (BoolVal (toFloat left < toFloat right), state2)
                 TOKEN LESS_EQUAL _ _ _ -> (BoolVal (toFloat left <= toFloat right), state2)
+                TOKEN EQUAL_EQUAL _ _ _ -> (BoolVal (left == right), state2)
+                TOKEN BANG_EQUAL _ _ _ -> (BoolVal (left /= right), state2)
                 TOKEN _ d _ n -> error ("Unsupported operator on line: " ++ show n ++ show d)
 evalExpr (Unary op expr) state = 
     let (value, state1) = evalExpr expr state

@@ -5,6 +5,12 @@
 -- map of variable names to values. The output is a list of strings that will be
 -- printed at the end of the program.
 -- =============================================================================
+module Interpretator (
+    interpreter,
+    State(..),
+    Value(..),
+    Env
+) where
 
 import System.Environment (getArgs)
 import Parser (parse)
@@ -64,27 +70,11 @@ updateValue name value (scope:rest) =
     if Map.member name scope
         then Map.insert name value scope : rest
         else scope : updateValue name value rest
--- ===================== Main =====================
-main :: IO ()
-main = do
-    args <- getArgs
-    if length args /= 1 
-        then putStrLn "Usage: ./interpreter <filename>"
-        else do
-            let filename = head args 
-            file <- readFile filename
-            let tokens = scanTokens file
-            let program = parse tokens
-            --Print the parsetree
-            print program
-            let state = State {environment = [Map.empty], output = []}
-            let result = interpreter program state
-            -- print the result
-            print result
 
 -- ===================== Interpreter =====================
-interpreter :: ParseTree -> State -> State
-interpreter (ParseTree decls) state = evalDeclarations decls state
+interpreter :: ParseTree -> State
+-- create the initial state and evaluate the parse tree
+interpreter (ParseTree decls) = evalDeclarations decls (State {environment = [Map.empty], output = []})
 
 -- ===================== Declaration =====================
 evalDeclarations :: [Declaration] -> State -> State

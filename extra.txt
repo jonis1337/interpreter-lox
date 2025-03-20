@@ -1,0 +1,1 @@
+- Har implementerat stöd för for loopar, kan testas med filen for.lox

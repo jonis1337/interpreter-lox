@@ -59,14 +59,17 @@ showValue Nil = "nil"
 
 -- Look up the value of a variable in the environment
 lookupVar:: String -> Env -> Maybe Value
+-- If we get empty, the variable is not declared
 lookupVar name [] = Nothing
 lookupVar name (env:envs) = 
     case Map.lookup name env of
         Just value -> Just value
+        -- look at parent scopes
         Nothing -> lookupVar name envs
 
 -- Update the value of a variable in the environment
 updateVar :: String -> Value -> Env -> Env
+-- If scope is empty, create a new one
 updateVar name value [] = [Map.singleton name value]
 updateVar name value (scope:rest) =
     if Map.member name scope
@@ -75,7 +78,7 @@ updateVar name value (scope:rest) =
 
 -- ===================== Interpreter =====================
 interpreter :: ParseTree -> State
--- create the initial state and evaluate the parse tree
+-- Create the initial state and evaluate the parse tree
 interpreter (ParseTree decls) = evalDeclarations decls (State {environment = [Map.empty], output = []})
 
 -- ===================== Declaration =====================
@@ -89,15 +92,20 @@ evalDeclarations (d:ds) state =
 -- Evaluate a single declaration
 evalDeclaration :: Declaration -> State -> State
 evalDeclaration (Statement stmt) state = evalStmt stmt state
+-- Handle variable declaration with initialization
 evalDeclaration (VarDecl token (Just expr)) state =
+    -- Get the name of the vatiable
     let name = case token of
             TOKEN IDENTIFIER n _ _ -> n
             _ -> error "Invalid variable name"
+        -- Eval expression to get value
         (value, state1) = evalExpr expr state
         newEnv = case environment state1 of
+            -- Add to current scope
             (currentScope:rest) -> Map.insert name value currentScope : rest
             [] -> [Map.singleton name value]
     in state1 {environment = newEnv}
+-- Handle variable declaration without initialization
 evalDeclaration (VarDecl token Nothing) state = 
     let name = case token of
             TOKEN IDENTIFIER n _ _ -> n
@@ -106,20 +114,25 @@ evalDeclaration (VarDecl token Nothing) state =
             (currentScope:rest) -> Map.insert name Nil currentScope : rest
             [] -> [Map.singleton name Nil]
     in state {environment = newEnv}
+
 evalDeclaration _ _ = error "Unimplemented declaration type"
 
-
 -- ===================== Statement =====================
+-- These functions will evaluate the statements in the parse tree
+-- and update the state.
 evalStmt :: Stmt -> State -> State
 evalStmt (Expression expr) state = 
+    -- We dont need the value here
     let (_, state1) = evalExpr expr state
     in state1
 evalStmt (Print expr) state = 
+    -- Get the value and add it to the output
     let (value, state1) = evalExpr expr state
         str = showValue value
     in state1 {output = output state1 ++ [str]}
 evalStmt (If expr stmt Nothing) state = 
     let (value, state1) = evalExpr expr state
+    -- Check if the expression is true
     in if toBool value
        then evalStmt stmt state1
        else state1
@@ -128,8 +141,8 @@ evalStmt (If expr stmt (Just elseStmt)) state =
     in if toBool value
         then evalStmt stmt state1
         else evalStmt elseStmt state1
-
-evalStmt (Block decls) state = -- Create new scope for block
+ -- Create new scope for block
+evalStmt (Block decls) state =
     let stateWithNewScope = state {environment = Map.empty : environment state}
         stateAfterBlock = evalDeclarations decls stateWithNewScope
     -- Return to parent scope after block
@@ -137,6 +150,7 @@ evalStmt (Block decls) state = -- Create new scope for block
 
 evalStmt (While expr stmt) state = 
     let (value, state1) = evalExpr expr state
+    -- Cuntinue looping while it is true
     in if toBool value
         then let newState = evalStmt stmt state1
              in evalStmt (While expr stmt) newState
@@ -150,13 +164,17 @@ evalStmt (For init cond incr stmt) state =
         Just expr -> 
             let (value, state2) = evalExpr expr state1
             in if toBool value
+                -- Execute the body 
                then let newState = evalStmt stmt state2
+                    -- Check if we need to increment
                         (incrValue, incrState) = case incr of
                             Just incrExpr -> evalExpr incrExpr newState
                             Nothing -> (Nil, newState)
                     in evalStmt (For Nothing cond incr stmt) incrState
+                -- Loop is done, return to the parent scope
                else state2
         Nothing -> 
+            --No condition, just execute the body
             let newState = evalStmt stmt state1
                 (incrValue, incrState) = case incr of
                     Just incrExpr -> evalExpr incrExpr newState
@@ -174,8 +192,10 @@ evalExpr (Assign var expr) state =
         (value, state1) = evalExpr expr state
         currentEnv = environment state1
     in case lookupVar name currentEnv of
+        -- If the variable is declared, update it
         Just _ -> (value, state1 {environment = updateVar name value currentEnv})
         Nothing -> error ("Variable " ++ name ++ " not declared")
+-- Get the value of the variable
 evalExpr (Variable var) state = 
     let name = case var of
             TOKEN IDENTIFIER n _ _ -> n
@@ -183,6 +203,7 @@ evalExpr (Variable var) state =
     in case lookupVar name (environment state) of 
            Just value -> (value, state)
            Nothing -> error ("Variable " ++ name ++ " not declared")
+--Get the calue of a literal
 evalExpr (Literal l) state = 
     case l of
         NONE -> (Nil, state)
@@ -192,7 +213,9 @@ evalExpr (Literal l) state =
         FALSE_LIT -> (BoolVal False, state)
         NIL_LIT -> (Nil, state)
         _ -> error "Invalid literal"
+-- Evaluate a binary expression
 evalExpr (Binary l op r) state = 
+    -- Eval left expressions first, so we dont do unnecessary work
     let (left, state1) = evalExpr l state
     in case op of
         TOKEN OR _ _ _ ->
@@ -205,6 +228,7 @@ evalExpr (Binary l op r) state =
                 else (left, state1)
     
         _ -> 
+            -- Now we eval the right side
             let (right, state2) = evalExpr r state1
             in case op of
                 TOKEN PLUS _ _ n -> case (left, right) of 
@@ -221,11 +245,15 @@ evalExpr (Binary l op r) state =
                 TOKEN EQUAL_EQUAL _ _ _ -> (BoolVal (left == right), state2)
                 TOKEN BANG_EQUAL _ _ _ -> (BoolVal (left /= right), state2)
                 TOKEN _ d _ n -> error ("Unsupported operator on line: " ++ show n ++ show d)
+
 evalExpr (Unary op expr) state = 
+    -- Eval the ecpression and apply the operator
     let (value, state1) = evalExpr expr state
     in case op of
         TOKEN MINUS _ _ _ -> (Number (- toDouble value), state1)
         TOKEN BANG _ _ _ -> (BoolVal (not (toBool value)), state1)
         _ -> error "Invalid unary operator"
+
 evalExpr (Grouping expr) state = evalExpr expr state
+
 evalExpr _ _ = error "Unimplemented expression type"

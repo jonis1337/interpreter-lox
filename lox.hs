@@ -28,7 +28,7 @@ main = do
             file <- readFile filename
             let tokens = scanTokens file
             let program = parse tokens
-            print program
+            --print program
             let result = interpreter program
             -- print the result
             print result

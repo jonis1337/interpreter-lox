@@ -1,1 +1,6 @@
-- Har implementerat stöd för for loopar, kan testas med filen for.lox
+- Har implementerat stöd för for loopar, kan testas med filen for.lox,
+  Programmet börjar med att kolla om det finns ett init statement, isåfall 
+  evalueras deklarationen och scopet uppdateras. Nästa sak som sker är att 
+  kolla om det finns en condition, om det det finns kommer uttrycket att 
+  evalueras och om det är true kommer blocket att evalueras och sendan kommer
+  ett rekursivt anrop att ske för att kolla condition igen. 

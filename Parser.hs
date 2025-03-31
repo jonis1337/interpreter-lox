@@ -3,7 +3,6 @@
 -- builds a parse tree from them. The parse tree is a list of declarations, which
 -- can be either function, variable, or statement declarations.
 -- =============================================================================
-
 module Parser (parse, runParserFromFile) where
 import Debug.Trace (trace)
 import Scanner (scanTokens)
@@ -15,9 +14,10 @@ runParserFromFile :: FilePath -> IO ()
 runParserFromFile filename = do
     content <- readFile filename
     let tokens = scanTokens content
-    putStrLn $ "Tokens: " ++ show tokens
+    --putStrLn $ "Tokens: " ++ show tokens
     let parseTree = parse tokens
     print parseTree
+
 
 -- Parse a list of declarations
 parse :: [Token] -> ParseTree
@@ -126,7 +126,7 @@ parseStatement tokens =
         (TOKEN FOR _ _ _ : rest) -> case rest of
                                         (TOKEN LEFT_PAREN _ _ _ : rest1) -> parseForStmt rest1
                                         (TOKEN _ _ _ line:_)            -> error("Expected opening paren at line: " ++ show line)
-        (TOKEN LEFT_BRACE _ _ _ : rest) -> let (decls, rest2) = parseBlock rest in (Block decls, rest2)
+        (TOKEN LEFT_BRACE _ _ _ : rest) -> parseBlock rest 
 
         _ -> parseExpressionStatement tokens
 
@@ -226,13 +226,14 @@ parseForStmt tokens =
 
 
 -- Parse a block of statements
-parseBlock :: [Token] -> ([Declaration], [Token])   
-parseBlock (TOKEN EOF _ _ _:_) = error("Missing right brace at end of block")
--- Parse until closing brace is reached
-parseBlock (TOKEN RIGHT_BRACE _ _ _:rest) = ([],rest)
-parseBlock l = let (decl, rest) = parseDeclaration l 
-                   (block, rest2) = parseBlock rest
-               in  (decl:block, rest2)
+parseBlock :: [Token] -> (Stmt, [Token])
+parseBlock (TOKEN EOF _ _ n : _) = error ("Missing right brace at end of block on line: " ++ show n)
+parseBlock (TOKEN RIGHT_BRACE _ _ _ : rest) = (Block [], rest)
+parseBlock tokens@(TOKEN _ _ _ n : _) =
+    let (decl, rest) = parseDeclaration tokens
+        (Block decls, rest2) = parseBlock rest
+    in (Block (decl : decls), rest2)
+parseBlock [] = error "Unexpected end of input in block"
 
 -- Parse an expression statement
 parseExpressionStatement :: [Token] -> (Stmt, [Token])

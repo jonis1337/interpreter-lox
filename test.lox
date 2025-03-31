@@ -1,0 +1,6 @@
+print "TEST_10_ENV";
+print "Should both be 5!";
+var a = 2;
+var b = (a = 1) * (a = 5);
+print b;
+print a;

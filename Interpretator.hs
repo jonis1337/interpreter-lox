@@ -17,6 +17,7 @@ import Scanner (scanTokens)
 import Tokens
 import ParseTypes
 import Debug.Trace (trace)
+import Data.List (intercalate)
 import qualified Data.Map as Map
 
 -- ===================== Data types =====================
@@ -34,7 +35,7 @@ data State = State {
     }
 instance Show State where
     -- print output on new line for each element
-    show (State enc out) = unlines out
+    show (State enc out) = intercalate "\n" out
     --show (State env out) = "Environment: " ++ show env ++ "\nOutput: {\n\n" ++ unlines out ++ "\n}"
 
 -- ===================== Helper functions =====================
@@ -53,7 +54,10 @@ toBool _ = True
 -- Convert value to string
 showValue :: Value -> String
 showValue (BoolVal b) = if b then "true" else "false"
-showValue (Number n) = show n
+showValue (Number n) = if n == fromInteger (floor n) 
+                       then show (floor n) 
+                       else show n
+  
 showValue (StringVal s) = s
 showValue Nil = "nil"
 

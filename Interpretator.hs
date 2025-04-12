@@ -25,7 +25,7 @@ type Env = [Map.Map String Value]
 data Value
     = Nil
     | BoolVal Bool
-    | Number Double
+    | Number Float
     | StringVal String
     deriving (Show, Eq)
 
@@ -39,10 +39,10 @@ instance Show State where
     --show (State env out) = "Environment: " ++ show env ++ "\nOutput: {\n\n" ++ unlines out ++ "\n}"
 
 -- ===================== Helper functions =====================
--- Convert value to double
-toDouble :: Value -> Double
-toDouble (Number n) = n
-toDouble _ = error "Expected number"
+-- Convert value to Float
+toFloat :: Value -> Float
+toFloat (Number n) = n
+toFloat _ = error "Expected number"
 
 -- Lox thruthiness
 toBool :: Value -> Bool
@@ -239,13 +239,13 @@ evalExpr (Binary l op r) state =
                     (Number a, Number b) -> (Number (a + b), state2)
                     (StringVal a, StringVal b) -> (StringVal (a ++ b), state2)
                     _ -> error ("Types not compatible with \"+\" operator on line: " ++ show n)
-                TOKEN MINUS _ _ _ -> (Number (toDouble left - toDouble right), state2)
-                TOKEN STAR _ _ _ -> (Number (toDouble left * toDouble right), state2)
-                TOKEN SLASH _ _ _ -> (Number (toDouble left / toDouble right), state2)
-                TOKEN GREATER _ _ _ -> (BoolVal (toDouble left > toDouble right), state2)
-                TOKEN GREATER_EQUAL _ _ _ -> (BoolVal (toDouble left >= toDouble right), state2)
-                TOKEN LESS _ _ _ -> (BoolVal (toDouble left < toDouble right), state2)
-                TOKEN LESS_EQUAL _ _ _ -> (BoolVal (toDouble left <= toDouble right), state2)
+                TOKEN MINUS _ _ _ -> (Number (toFloat left - toFloat right), state2)
+                TOKEN STAR _ _ _ -> (Number (toFloat left * toFloat right), state2)
+                TOKEN SLASH _ _ _ -> (Number (toFloat left / toFloat right), state2)
+                TOKEN GREATER _ _ _ -> (BoolVal (toFloat left > toFloat right), state2)
+                TOKEN GREATER_EQUAL _ _ _ -> (BoolVal (toFloat left >= toFloat right), state2)
+                TOKEN LESS _ _ _ -> (BoolVal (toFloat left < toFloat right), state2)
+                TOKEN LESS_EQUAL _ _ _ -> (BoolVal (toFloat left <= toFloat right), state2)
                 TOKEN EQUAL_EQUAL _ _ _ -> (BoolVal (left == right), state2)
                 TOKEN BANG_EQUAL _ _ _ -> (BoolVal (left /= right), state2)
                 TOKEN _ d _ n -> error ("Unsupported operator on line: " ++ show n ++ show d)
@@ -254,7 +254,7 @@ evalExpr (Unary op expr) state =
     -- Eval the ecpression and apply the operator
     let (value, state1) = evalExpr expr state
     in case op of
-        TOKEN MINUS _ _ _ -> (Number (- toDouble value), state1)
+        TOKEN MINUS _ _ _ -> (Number (- toFloat value), state1)
         TOKEN BANG _ _ _ -> (BoolVal (not (toBool value)), state1)
         _ -> error "Invalid unary operator"
 
